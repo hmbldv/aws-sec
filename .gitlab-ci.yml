@@ -1,0 +1,46 @@
+# This is a GitLab CI/CD pipeline configuration file
+# It defines what jobs run when you push code to GitLab
+
+# Use the official AWS CLI Docker image
+image: 
+  name: amazon/aws-cli:latest
+  entrypoint: [""]
+
+# Define pipeline stages (jobs run in stages, sequentially)
+stages:
+  - test
+
+# Job: Test AWS Authentication
+test-aws-auth:
+  stage: test
+  # This tells GitLab to use OIDC to get AWS credentials
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.com
+  
+  # Set up AWS authentication using OIDC
+  before_script:
+    # Export the role ARN (replace with your actual ARN)
+    - export AWS_ROLE_ARN="arn:aws:iam::123456789012:role/devops-operator"
+    - export AWS_DEFAULT_REGION="us-west-1"
+    
+    # Use the GitLab OIDC token to assume the AWS role
+    - >
+      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
+      $(aws sts assume-role-with-web-identity
+      --role-arn ${AWS_ROLE_ARN}
+      --role-session-name "gitlab-${CI_PROJECT_PATH_SLUG}-${CI_PIPELINE_ID}"
+      --web-identity-token ${GITLAB_OIDC_TOKEN}
+      --duration-seconds 3600
+      --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
+      --output text))
+  
+  # The actual job script - verify we can access AWS
+  script:
+    - echo "Testing AWS authentication..."
+    - aws sts get-caller-identity
+    - echo "SUCCESS! GitLab can authenticate to AWS!"
+  
+  # Only run on main branch for now
+  only:
+    - main
