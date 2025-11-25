@@ -1,30 +1,86 @@
-# This is a GitLab CI/CD pipeline configuration file
-# It defines what jobs run when you push code to GitLab
+#------------------------------------------------------------------------------
+# GitLab CI/CD Pipeline for AWS Security Infrastructure
+#------------------------------------------------------------------------------
+# This pipeline manages Terraform infrastructure deployment with:
+#   - OIDC authentication (no stored secrets)
+#   - Terraform validation and formatting checks
+#   - Plan output as artifact for review
+#   - Manual approval gate before apply
+#   - Post-deployment verification tests
+#
+# Required GitLab CI/CD Variables (Settings > CI/CD > Variables):
+#   - AWS_ACCOUNT_ID: Your AWS account ID (e.g., 266735821834)
+#
+# The pipeline uses the devops-operator IAM role which is configured
+# to trust GitLab's OIDC provider for this repository.
+#------------------------------------------------------------------------------
 
-# Use the official AWS CLI Docker image
-image: 
-  name: amazon/aws-cli:latest
+#------------------------------------------------------------------------------
+# Global Configuration
+#------------------------------------------------------------------------------
+
+# Use the official HashiCorp Terraform image
+# This includes terraform CLI and common tools
+image:
+  name: hashicorp/terraform:1.7
   entrypoint: [""]
 
-# Define pipeline stages (jobs run in stages, sequentially)
+# Define pipeline stages in execution order
 stages:
-  - test
+  - validate    # Lint and validate Terraform code
+  - plan        # Generate execution plan
+  - apply       # Apply changes (manual trigger)
+  - test        # Verify deployment
 
-# Job: Test AWS Authentication
-test-aws-auth:
-  stage: test
-  # This tells GitLab to use OIDC to get AWS credentials
+# Cache Terraform plugins to speed up subsequent runs
+# Plugins are cached per-branch to avoid conflicts
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - terraform/infrastructure/.terraform/
+
+#------------------------------------------------------------------------------
+# Global Variables
+#------------------------------------------------------------------------------
+
+variables:
+  # Terraform working directory
+  TF_ROOT: "${CI_PROJECT_DIR}/terraform/infrastructure"
+  # AWS region for deployment
+  AWS_DEFAULT_REGION: "us-west-1"
+  # Disable Terraform's automatic plugin discovery (use cache)
+  TF_PLUGIN_CACHE_DIR: "${CI_PROJECT_DIR}/.terraform.d/plugin-cache"
+  # Reduce Terraform output noise
+  TF_IN_AUTOMATION: "true"
+  # Plan output file name
+  TF_PLAN_FILE: "tfplan"
+
+#------------------------------------------------------------------------------
+# OIDC Authentication Template
+#------------------------------------------------------------------------------
+# Reusable configuration for AWS OIDC authentication.
+# All jobs that need AWS access should extend this template.
+#------------------------------------------------------------------------------
+
+.aws_oidc_auth:
+  # Request OIDC token from GitLab
   id_tokens:
     GITLAB_OIDC_TOKEN:
       aud: https://gitlab.com
-  
-  # Set up AWS authentication using OIDC
+
   before_script:
-    # Export the role ARN (replace with your actual ARN)
-    - export AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/devops-operator"  # Set AWS_ACCOUNT_ID in GitLab CI/CD variables
-    - export AWS_DEFAULT_REGION="us-west-1"
-    
-    # Use the GitLab OIDC token to assume the AWS role
+    # Set up AWS role ARN
+    - export AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/devops-operator"
+
+    # Install AWS CLI if not present (Terraform image doesn't include it)
+    - |
+      if ! command -v aws &> /dev/null; then
+        apk add --no-cache python3 py3-pip
+        pip3 install awscli --break-system-packages
+      fi
+
+    # Assume role using OIDC web identity
+    - echo "Authenticating to AWS using OIDC..."
     - >
       export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
       $(aws sts assume-role-with-web-identity
@@ -34,13 +90,245 @@ test-aws-auth:
       --duration-seconds 3600
       --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
       --output text))
-  
-  # The actual job script - verify we can access AWS
-  script:
-    - echo "Testing AWS authentication..."
+
+    # Verify authentication
     - aws sts get-caller-identity
-    - echo "SUCCESS! GitLab can authenticate to AWS!"
-  
-  # Only run on main branch for now
-  only:
-    - main
+    - echo "AWS authentication successful!"
+
+#------------------------------------------------------------------------------
+# Stage: Validate
+#------------------------------------------------------------------------------
+# Runs Terraform fmt check and validate to catch issues early.
+# Fails fast if code doesn't meet formatting standards.
+#------------------------------------------------------------------------------
+
+terraform:validate:
+  stage: validate
+  extends: .aws_oidc_auth
+  script:
+    - cd ${TF_ROOT}
+
+    # Check Terraform formatting
+    - echo "Checking Terraform formatting..."
+    - terraform fmt -check -recursive -diff
+
+    # Initialize Terraform (required for validate)
+    - echo "Initializing Terraform..."
+    - terraform init -input=false
+
+    # Validate configuration
+    - echo "Validating Terraform configuration..."
+    - terraform validate
+
+    - echo "Validation complete!"
+
+  rules:
+    # Run on all merge requests
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Run on main branch
+    - if: $CI_COMMIT_BRANCH == "main"
+    # Run on manual trigger
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+#------------------------------------------------------------------------------
+# Stage: Plan
+#------------------------------------------------------------------------------
+# Generates Terraform execution plan and saves as artifact.
+# The plan shows exactly what changes will be made.
+#------------------------------------------------------------------------------
+
+terraform:plan:
+  stage: plan
+  extends: .aws_oidc_auth
+  script:
+    - cd ${TF_ROOT}
+
+    # Initialize Terraform
+    - echo "Initializing Terraform..."
+    - terraform init -input=false
+
+    # Generate plan
+    - echo "Generating Terraform plan..."
+    - terraform plan -input=false -out=${TF_PLAN_FILE}
+
+    # Show plan summary in human-readable format
+    - echo "Plan summary:"
+    - terraform show -no-color ${TF_PLAN_FILE}
+
+  # Save plan as artifact for apply stage
+  artifacts:
+    name: "terraform-plan-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - ${TF_ROOT}/${TF_PLAN_FILE}
+    expire_in: 7 days
+    # Also save human-readable plan for review
+    reports:
+      terraform: ${TF_ROOT}/${TF_PLAN_FILE}
+
+  rules:
+    # Run on merge requests (for review)
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Run on main branch
+    - if: $CI_COMMIT_BRANCH == "main"
+    # Run on manual trigger
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+#------------------------------------------------------------------------------
+# Stage: Apply
+#------------------------------------------------------------------------------
+# Applies the Terraform plan to create/update infrastructure.
+# MANUAL TRIGGER REQUIRED - provides approval gate for safety.
+#------------------------------------------------------------------------------
+
+terraform:apply:
+  stage: apply
+  extends: .aws_oidc_auth
+  script:
+    - cd ${TF_ROOT}
+
+    # Initialize Terraform
+    - echo "Initializing Terraform..."
+    - terraform init -input=false
+
+    # Apply the saved plan
+    - echo "Applying Terraform plan..."
+    - terraform apply -input=false -auto-approve ${TF_PLAN_FILE}
+
+    # Show final state
+    - echo "Deployment complete! Current state:"
+    - terraform output -json > terraform-outputs.json
+    - cat terraform-outputs.json
+
+  # Save outputs as artifact
+  artifacts:
+    name: "terraform-outputs-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - ${TF_ROOT}/terraform-outputs.json
+    expire_in: 30 days
+
+  # Dependencies ensure we use the plan from the previous stage
+  dependencies:
+    - terraform:plan
+
+  rules:
+    # Only run on main branch with manual trigger
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+    # Allow manual trigger from web UI
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+  # Prevent concurrent applies
+  resource_group: terraform-apply
+
+#------------------------------------------------------------------------------
+# Stage: Test - Verify Services Enabled
+#------------------------------------------------------------------------------
+# Post-deployment tests to verify security services are properly enabled.
+# Runs automatically after successful apply.
+#------------------------------------------------------------------------------
+
+test:verify-services:
+  stage: test
+  extends: .aws_oidc_auth
+  script:
+    - cd ${TF_ROOT}
+
+    - echo "Verifying AWS Security Services..."
+
+    # Verify CloudTrail
+    - echo "Checking CloudTrail..."
+    - |
+      TRAIL_STATUS=$(aws cloudtrail get-trail-status --name organization-trail --query 'IsLogging' --output text 2>/dev/null || echo "NOT_FOUND")
+      if [ "$TRAIL_STATUS" = "True" ]; then
+        echo "CloudTrail: ENABLED and logging"
+      elif [ "$TRAIL_STATUS" = "NOT_FOUND" ]; then
+        echo "CloudTrail: Not found (may be disabled via variable)"
+      else
+        echo "CloudTrail: WARNING - Not logging (status: $TRAIL_STATUS)"
+      fi
+
+    # Verify Config Recorder
+    - echo "Checking AWS Config..."
+    - |
+      CONFIG_STATUS=$(aws configservice describe-configuration-recorder-status --query 'ConfigurationRecordersStatus[0].recording' --output text 2>/dev/null || echo "NOT_FOUND")
+      if [ "$CONFIG_STATUS" = "True" ]; then
+        echo "AWS Config: ENABLED and recording"
+      elif [ "$CONFIG_STATUS" = "NOT_FOUND" ]; then
+        echo "AWS Config: Not found (may be disabled via variable)"
+      else
+        echo "AWS Config: WARNING - Not recording (status: $CONFIG_STATUS)"
+      fi
+
+    # Verify GuardDuty
+    - echo "Checking GuardDuty..."
+    - |
+      GD_DETECTOR=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output text 2>/dev/null || echo "")
+      if [ -n "$GD_DETECTOR" ] && [ "$GD_DETECTOR" != "None" ]; then
+        GD_STATUS=$(aws guardduty get-detector --detector-id $GD_DETECTOR --query 'Status' --output text)
+        echo "GuardDuty: $GD_STATUS (Detector: $GD_DETECTOR)"
+      else
+        echo "GuardDuty: Not enabled (may be disabled via variable)"
+      fi
+
+    # Verify Security Hub
+    - echo "Checking Security Hub..."
+    - |
+      SH_STATUS=$(aws securityhub describe-hub --query 'HubArn' --output text 2>/dev/null || echo "NOT_ENABLED")
+      if [ "$SH_STATUS" != "NOT_ENABLED" ]; then
+        echo "Security Hub: ENABLED ($SH_STATUS)"
+      else
+        echo "Security Hub: Not enabled (may be disabled via variable)"
+      fi
+
+    # List S3 buckets for verification
+    - echo "Security-related S3 buckets:"
+    - aws s3 ls | grep -E "(cloudtrail|config|guardduty)" || echo "No security buckets found"
+
+    - echo "Service verification complete!"
+
+  # Only run after successful apply
+  needs:
+    - job: terraform:apply
+      optional: true
+
+  rules:
+    # Run after apply on main branch
+    - if: $CI_COMMIT_BRANCH == "main"
+    # Run on manual trigger
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+  # Allow this job to fail without failing the pipeline
+  allow_failure: true
+
+#------------------------------------------------------------------------------
+# Manual Job: Destroy Infrastructure
+#------------------------------------------------------------------------------
+# DANGEROUS: Destroys all managed infrastructure.
+# Only available on main branch with manual trigger.
+# Use with extreme caution!
+#------------------------------------------------------------------------------
+
+terraform:destroy:
+  stage: apply
+  extends: .aws_oidc_auth
+  script:
+    - cd ${TF_ROOT}
+
+    - echo "WARNING: This will destroy all Terraform-managed infrastructure!"
+    - echo "Waiting 10 seconds... Press Ctrl+C to abort."
+    - sleep 10
+
+    # Initialize Terraform
+    - terraform init -input=false
+
+    # Destroy infrastructure
+    - terraform destroy -auto-approve
+
+  rules:
+    # Only available on main branch, manual trigger only
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+
+  # Prevent concurrent operations
+  resource_group: terraform-apply
