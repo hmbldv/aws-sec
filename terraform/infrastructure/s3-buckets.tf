@@ -133,10 +133,10 @@ resource "aws_s3_bucket_policy" "config_bucket" {
         }
       },
       {
-        Sid    = "DenyInsecureTransport"
-        Effect = "Deny"
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
         Principal = "*"
-        Action   = "s3:*"
+        Action    = "s3:*"
         Resource = [
           aws_s3_bucket.config_bucket.arn,
           "${aws_s3_bucket.config_bucket.arn}/*"
@@ -262,10 +262,10 @@ resource "aws_s3_bucket_policy" "macie_bucket" {
         }
       },
       {
-        Sid    = "DenyInsecureTransport"
-        Effect = "Deny"
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
         Principal = "*"
-        Action   = "s3:*"
+        Action    = "s3:*"
         Resource = [
           aws_s3_bucket.macie_bucket.arn,
           "${aws_s3_bucket.macie_bucket.arn}/*"
@@ -277,11 +277,11 @@ resource "aws_s3_bucket_policy" "macie_bucket" {
         }
       },
       {
-        Sid    = "DenyUnencryptedObjectUploads"
-        Effect = "Deny"
+        Sid       = "DenyUnencryptedObjectUploads"
+        Effect    = "Deny"
         Principal = "*"
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.macie_bucket.arn}/*"
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.macie_bucket.arn}/*"
         Condition = {
           Null = {
             "s3:x-amz-server-side-encryption" = "true"

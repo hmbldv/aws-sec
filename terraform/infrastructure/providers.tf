@@ -8,16 +8,8 @@ terraform {
     }
   }
 
-  # Backend configuration for remote state
-  # Configure via backend.hcl or -backend-config flags:
-  #   terraform init -backend-config="bucket=terraform-state-<account-id>-<region>"
-  backend "s3" {
-    # bucket         = "terraform-state-<account-id>-<region>"  # Configure via backend.hcl
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-west-1"
-    dynamodb_table = "terraform-state-lock"
-    encrypt        = true
-  }
+  # Using local backend for state management
+  # State files will be stored locally in terraform.tfstate
 }
 
 provider "aws" {
