@@ -7,21 +7,56 @@ Secure AWS infrastructure foundation built with Terraform, featuring remote stat
 This project establishes a production-grade foundation for AWS security infrastructure using Infrastructure as Code (IaC) principles. It implements secure Terraform state management with S3 and DynamoDB, and integrates with GitLab CI/CD using OpenID Connect (OIDC) for credential-less AWS authentication.
 
 **Key Features**:
+- **Security Testing Lab**: Ubuntu target + attacker instances with Kali tools for offensive/defensive testing
+- **Multi-Account Management**: IAM roles for cross-account access via IAM Identity Center
 - **Secure State Management**: Encrypted S3 backend with versioning and lifecycle policies
 - **State Locking**: DynamoDB table preventing concurrent Terraform executions
 - **Zero Credential Storage**: OIDC federation for GitLab → AWS authentication
+- **Security Monitoring**: AWS Config and Macie bucket integration
 - **Cost Optimized**: Pay-per-request DynamoDB, intelligent S3 lifecycle policies
-- **Security First**: Public access blocked, encryption at rest, audit-ready configuration
+- **Security First**: IMDSv2 required, encrypted EBS, public access blocked
 
 ## Tech Stack
 
 - **Terraform** - Infrastructure as Code for AWS resource provisioning
-- **AWS S3** - Encrypted remote state storage with versioning
+- **AWS EC2** - Security lab instances (Ubuntu target + attacker with Kali tools)
+- **AWS S3** - Encrypted remote state storage, AWS Config, and Macie buckets
 - **AWS DynamoDB** - State locking and consistency management
-- **AWS IAM** - OIDC identity provider and role-based access control
+- **AWS IAM** - OIDC identity provider, security analyst roles, cross-account access
+- **AWS SSM** - Session Manager for secure instance access
 - **GitLab CI/CD** - Automated infrastructure deployment pipeline
 
 ## Architecture
+
+### Security Lab Architecture
+
+```
+                    ┌─────────────────┐
+                    │   Your Admin    │
+                    │   Workstation   │
+                    └────────┬────────┘
+                             │ SSH/RDP/SSM
+                             ▼
+┌────────────────────────────────────────────────────────────┐
+│                     AWS VPC (172.31.0.0/16)                │
+│  ┌─────────────────────┐     ┌─────────────────────────┐  │
+│  │   Attacker Box      │     │     Ubuntu Target       │  │
+│  │   (Ubuntu + Kali)   │────▶│     (t3.medium)         │  │
+│  │                     │     │                         │  │
+│  │ - Metasploit        │ ALL │ - Ubuntu Desktop        │  │
+│  │ - Nmap, Hydra       │PORTS│ - Apache, MySQL         │  │
+│  │ - Impacket, CrackME │     │ - XRDP for remote       │  │
+│  │ - SecLists, PEASS   │     │ - Vulnerable services   │  │
+│  └─────────────────────┘     └─────────────────────────┘  │
+│     SG: kali-attacker           SG: ubuntu-target         │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Security Features:**
+- IMDSv2 required (prevents SSRF credential theft)
+- Encrypted EBS volumes
+- SSM Session Manager enabled
+- CloudWatch detailed monitoring
 
 ### Infrastructure State Management
 
@@ -223,13 +258,36 @@ terraform apply
 ### Current State
 - ✅ State backend deployed (S3 + DynamoDB)
 - ✅ GitLab OIDC authentication working
-- ⏳ Infrastructure deployment automation (in progress)
+- ✅ Security lab deployed (Ubuntu target + attacker with Kali tools)
+- ✅ IAM roles created (SecurityAnalyst, OrganizationAdmin)
+- ✅ S3 buckets managed (AWS Config, Macie)
+- ⏳ Multi-account scanning (Log Archive access pending)
+
+### Security Lab Access
+
+**SSH Access:**
+```bash
+# Attacker box (Ubuntu + Kali tools)
+ssh -i ~/.ssh/id_ed25519 ubuntu@<attacker-public-ip>
+
+# Target box
+ssh -i ~/.ssh/id_ed25519 ubuntu@<target-public-ip>
+```
+
+**RDP Access (after user-data completes):**
+- Attacker: `<attacker-public-ip>:3389` (user: `pentester` / pass: `KaliPentester123!`)
+- Target: `<target-public-ip>:3389` (user: `labuser` / pass: `LabPassword123!`)
+
+**SSM Session Manager:**
+```bash
+aws ssm start-session --target <instance-id>
+```
 
 ### Next Steps
 1. Expand GitLab CI/CD pipeline with Terraform stages
-2. Build AWS security infrastructure in `terraform/infrastructure/`
+2. Fix Log Archive account access (OrganizationAccountAccessRole)
 3. Implement security scanning (tfsec, checkov)
-4. Add automated testing and validation
+4. Add GuardDuty, Security Hub, CloudTrail
 
 ## Security Considerations
 
@@ -265,7 +323,12 @@ aws-sec/
 │   │   └── providers.tf        # AWS provider configuration
 │   │
 │   └── infrastructure/         # Main infrastructure code
-│       └── (to be built)       # Security infrastructure resources
+│       ├── security-lab.tf     # EC2 instances (target + attacker)
+│       ├── iam-policies.tf     # SecurityAnalyst, OrganizationAdmin roles
+│       ├── s3-buckets.tf       # AWS Config and Macie bucket management
+│       ├── oidc.tf             # GitLab OIDC provider and devops role
+│       ├── variables.tf        # Input variables
+│       └── providers.tf        # AWS provider and S3 backend
 │
 ├── scripts/                    # Automation scripts
 ├── docs/                       # Additional documentation
@@ -311,12 +374,19 @@ aws dynamodb scan --table-name terraform-state-locks
 
 ## Future Enhancements
 
+### Completed
+- [x] Security testing lab (Ubuntu target + attacker)
+- [x] IAM roles for security analysts
+- [x] S3 bucket management (Config, Macie)
+- [x] GitLab OIDC integration
+- [x] IMDSv2 enforcement on EC2
+
 ### Planned Infrastructure
-- [ ] VPC with public/private subnets
+- [ ] VPC with public/private subnets (dedicated security lab VPC)
 - [ ] AWS GuardDuty for threat detection
 - [ ] Security Hub for centralized findings
 - [ ] CloudTrail for audit logging
-- [ ] Config for compliance monitoring
+- [ ] Config rules for compliance monitoring
 - [ ] KMS keys for encryption
 
 ### Pipeline Enhancements
@@ -332,22 +402,28 @@ aws dynamodb scan --table-name terraform-state-locks
 - [ ] S3 bucket logging
 - [ ] VPC endpoints for S3 access
 - [ ] Secrets management with AWS Secrets Manager
+- [ ] Restrict security lab to specific CIDR blocks
 
 ## Cost Optimization
 
 **Current Costs** (estimated):
+- **EC2 (t3.medium x2)**: ~$60/month (if running 24/7) - **stop when not in use!**
+- **EBS Storage (90GB)**: ~$7/month
 - **S3 Storage**: ~$0.023/GB/month (Standard tier)
 - **S3 Requests**: Minimal (PUT/GET for state operations)
 - **DynamoDB**: ~$0.25/million requests (PAY_PER_REQUEST mode)
 - **Data Transfer**: Free within same region
 
-**Cost-Saving Features**:
+**Cost-Saving Tips**:
+- **Stop EC2 instances** when not actively testing (biggest savings!)
 - State versions moved to STANDARD_IA after 30 days (~50% cheaper)
 - Old versions deleted after 90 days
 - DynamoDB on-demand pricing (no idle costs)
 - No KMS charges (using AWS-managed keys)
 
-**Estimated Monthly Cost**: < $1 for typical usage
+**Estimated Monthly Cost**:
+- With EC2 running: ~$70/month
+- With EC2 stopped: < $10/month
 
 ## License
 
