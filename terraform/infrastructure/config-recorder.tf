@@ -27,6 +27,12 @@ resource "aws_iam_role" "config_recorder" {
   }
 }
 
+# Attach AWS managed policy for Config recorder
+resource "aws_iam_role_policy_attachment" "config_recorder_managed" {
+  role       = aws_iam_role.config_recorder.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+}
+
 # IAM policy for Config recorder permissions
 # Grant permissions to record AWS resource configurations
 resource "aws_iam_role_policy" "config_permissions" {
