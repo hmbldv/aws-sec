@@ -1,30 +1,29 @@
 # AWS Security Infrastructure
 
-Secure AWS infrastructure foundation built with Terraform, featuring remote state management and GitLab CI/CD automation with OIDC federation.
+Secure AWS infrastructure foundation built with Terraform, featuring AWS Config aggregator for organization-wide compliance monitoring and security testing lab environments.
 
 ## Overview
 
-This project establishes a production-grade foundation for AWS security infrastructure using Infrastructure as Code (IaC) principles. It implements secure Terraform state management with S3 and DynamoDB, and integrates with GitLab CI/CD using OpenID Connect (OIDC) for credential-less AWS authentication.
+This project establishes a production-grade foundation for AWS security infrastructure using Infrastructure as Code (IaC) principles. It implements comprehensive security monitoring with AWS Config, IAM security roles, and a hands-on security testing laboratory.
 
 **Key Features**:
+- **AWS Config Aggregator**: Organization-wide compliance monitoring across all AWS accounts and regions
 - **Security Testing Lab**: Ubuntu target + attacker instances with Kali tools for offensive/defensive testing
 - **Multi-Account Management**: IAM roles for cross-account access via IAM Identity Center
-- **Secure State Management**: Encrypted S3 backend with versioning and lifecycle policies
-- **State Locking**: DynamoDB table preventing concurrent Terraform executions
-- **Zero Credential Storage**: OIDC federation for GitLab → AWS authentication
-- **Security Monitoring**: AWS Config and Macie bucket integration
-- **Cost Optimized**: Pay-per-request DynamoDB, intelligent S3 lifecycle policies
-- **Security First**: IMDSv2 required, encrypted EBS, public access blocked
+- **Configuration Recording**: Continuous tracking of all AWS resource configurations
+- **Security Monitoring**: AWS Config recorder, Config aggregator, and Macie integration
+- **Local State Management**: Simplified Terraform state management for rapid iteration
+- **Security First**: IMDSv2 required, encrypted EBS, public access blocked on S3 buckets
 
 ## Tech Stack
 
 - **Terraform** - Infrastructure as Code for AWS resource provisioning
+- **AWS Config** - Resource configuration recording and organization-wide aggregation
 - **AWS EC2** - Security lab instances (Ubuntu target + attacker with Kali tools)
-- **AWS S3** - Encrypted remote state storage, AWS Config, and Macie buckets
-- **AWS DynamoDB** - State locking and consistency management
-- **AWS IAM** - OIDC identity provider, security analyst roles, cross-account access
+- **AWS S3** - Encrypted storage for AWS Config snapshots and Macie findings
+- **AWS IAM** - Security analyst roles, Config recorder roles, cross-account access
 - **AWS SSM** - Session Manager for secure instance access
-- **GitLab CI/CD** - Automated infrastructure deployment pipeline
+- **AWS Macie** - Sensitive data discovery and classification
 
 ## Architecture
 
@@ -58,94 +57,101 @@ This project establishes a production-grade foundation for AWS security infrastr
 - SSM Session Manager enabled
 - CloudWatch detailed monitoring
 
-### Infrastructure State Management
+### AWS Config Architecture
 
 ```
-┌─────────────────┐
-│  GitLab CI/CD   │
-│   (OIDC Token)  │
-└────────┬────────┘
-         │ Assume Role (OIDC)
-         ▼
-┌─────────────────────────┐
-│    AWS IAM Role         │
-│  "devops-operator"      │
-│  (Restricted by Path)   │
-└────────┬────────────────┘
-         │
-         ├──────────────┐
-         │              │
-         ▼              ▼
-┌──────────────┐  ┌─────────────────┐
-│  S3 Bucket   │  │ DynamoDB Table  │
-│ (State File) │  │ (State Locks)   │
-│  Encrypted   │  │  "LockID" Key   │
-│  Versioned   │  │  PAY_PER_REQ    │
-└──────────────┘  └─────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                   AWS Organization                             │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │   Account    │  │   Account    │  │   Account    │        │
+│  │   (squinks)  │  │ (sec-tools)  │  │(log-archive) │  ...   │
+│  │              │  │              │  │              │        │
+│  │ Config       │  │ Config       │  │ Config       │        │
+│  │ Recorder     │  │ Recorder     │  │ Recorder     │        │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘        │
+│         │                 │                 │                 │
+│         └─────────────────┼─────────────────┘                 │
+│                           ▼                                    │
+│                ┌────────────────────────┐                      │
+│                │   Config Aggregator    │                      │
+│                │  (organization-wide)   │                      │
+│                │   All Regions          │                      │
+│                └────────┬───────────────┘                      │
+│                         │                                      │
+│                         ▼                                      │
+│                ┌─────────────────┐                             │
+│                │  S3 Bucket      │                             │
+│                │  (Config Data)  │                             │
+│                │  Encrypted      │                             │
+│                └─────────────────┘                             │
+└────────────────────────────────────────────────────────────────┘
 ```
+
+**Config Features:**
+- **Continuous Recording**: Tracks all resource configuration changes
+- **Organization Aggregation**: Centralized view across all AWS accounts
+- **All Regions**: Monitors resources in every AWS region
+- **Compliance Monitoring**: Enables compliance rules and auditing
+- **7-Year Retention**: Config snapshots retained for compliance requirements
 
 ### Security Architecture
 
-- **Encryption at Rest**: S3 server-side encryption (AES256)
-- **Access Control**: IAM role with project path restrictions
+- **Encryption at Rest**: S3 server-side encryption (AES256) for Config data
+- **Access Control**: IAM service roles with least privilege permissions
 - **Public Access**: Completely blocked via S3 bucket policies
-- **State Integrity**: DynamoDB locking prevents state corruption
-- **Audit Trail**: S3 versioning enables state history and rollback
-- **Credential-less**: OIDC eliminates need for long-lived AWS credentials
+- **Audit Trail**: S3 versioning and lifecycle policies for Config snapshots
+- **Compliance**: Continuous monitoring of resource configurations
 
 ## Prerequisites
 
 ### Required Tools
 - **Terraform** >= 1.0
-- **AWS CLI** v2 (for manual operations)
-- **GitLab Account** with OIDC configured
+- **AWS CLI** v2 with SSO configured
+- **SSH Key** for EC2 instance access
 
 ### AWS Account Requirements
-- AWS account with administrative access (for initial setup)
+- AWS Organizations with multiple accounts (recommended)
 - IAM permissions to create:
-  - S3 buckets
-  - DynamoDB tables
+  - EC2 instances and security groups
   - IAM roles and policies
-  - OIDC identity providers
-
-### GitLab Setup
-- GitLab project repository
-- OIDC identity provider configured in AWS
-- IAM role with trust policy for GitLab project path
+  - AWS Config recorder and aggregator
+  - S3 buckets for Config and Macie
+- AWS IAM Identity Center (SSO) access
 
 ## Installation
 
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/aws-sec.git
+git clone https://github.com/hmbldv/aws-sec.git
 cd aws-sec
 ```
 
 ### Step 2: Configure Variables
 
-Copy the example tfvars file and fill in your values:
+Edit the Terraform variables file:
 
 ```bash
-cd terraform/state-backend
+cd terraform/infrastructure
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your AWS account ID
+# Edit terraform.tfvars with your values
 ```
 
 Example `terraform.tfvars`:
 ```hcl
 aws_account_id      = "123456789012"  # Your AWS account ID
 aws_region          = "us-west-1"
-state_bucket_name   = ""              # Auto-generated if empty
-dynamodb_table_name = "terraform-state-locks"
+environment         = "production"
+ssh_public_key      = "ssh-ed25519 AAAA..."  # Your SSH public key
+admin_cidr_blocks   = ["YOUR_IP/32"]  # Restrict to your IP
 ```
 
-### Step 3: Initialize Terraform State Backend
-
-**Important**: This must be done locally first, before GitLab CI/CD can use it.
+### Step 3: Deploy Infrastructure
 
 ```bash
-cd terraform/state-backend
+# Authenticate to AWS
+aws sso login --profile default
 
 # Initialize Terraform
 terraform init
@@ -153,37 +159,8 @@ terraform init
 # Review the plan
 terraform plan
 
-# Apply to create S3 bucket and DynamoDB table
+# Apply to create all resources
 terraform apply
-```
-
-**Output** (save these values):
-```
-state_bucket_name   = "terraform-state-123456789012-us-west-1"
-dynamodb_table_name = "terraform-state-locks"
-state_bucket_arn    = "arn:aws:s3:::terraform-state-..."
-```
-
-### Step 4: Configure Backend for Future Infrastructure
-
-Create `terraform/infrastructure/backend.hcl` with your bucket name:
-
-```bash
-cd terraform/infrastructure
-cp backend.hcl.example backend.hcl
-# Edit backend.hcl with your bucket name from Step 3
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
-```
-
-Example `backend.hcl`:
-```hcl
-bucket = "terraform-state-123456789012-us-west-1"  # From Step 3
-```
-
-Then initialize with:
-```bash
-terraform init -backend-config=backend.hcl
 ```
 
 ## Configuration
@@ -244,7 +221,7 @@ aws sso login --profile <your-profile>
 # Navigate to infrastructure directory
 cd terraform/infrastructure
 
-# Initialize (uses remote backend)
+# Initialize with local backend
 terraform init
 
 # Plan changes
@@ -269,11 +246,12 @@ terraform apply
 ## Deployment
 
 ### Current State
-- ✅ State backend deployed (S3 + DynamoDB)
-- ✅ GitLab OIDC authentication working
+- ✅ AWS Config aggregator deployed (organization-wide)
+- ✅ AWS Config recorder running (continuous monitoring)
 - ✅ Security lab deployed (Ubuntu target + attacker with Kali tools)
 - ✅ IAM roles created (SecurityAnalyst, OrganizationAdmin)
 - ✅ S3 buckets managed (AWS Config, Macie)
+- ✅ GitLab OIDC authentication working
 - ⏳ Multi-account scanning (Log Archive access pending)
 
 ### Security Lab Access
@@ -297,73 +275,59 @@ aws ssm start-session --target <instance-id>
 ```
 
 ### Next Steps
-1. Expand GitLab CI/CD pipeline with Terraform stages
-2. Fix Log Archive account access (OrganizationAccountAccessRole)
+1. Deploy Config recorders in other organization accounts
+2. Expand GitLab CI/CD pipeline with Terraform stages
 3. Implement security scanning (tfsec, checkov)
 4. Add GuardDuty, Security Hub, CloudTrail
 
 ## Security Considerations
 
-### State Security
-- **Encryption**: All state files encrypted at rest with AES256
-- **Access Control**: S3 bucket is private, no public access
-- **Versioning**: Enabled for audit trail and rollback capability
-- **Lifecycle Management**: Old state versions archived and expired
+### Infrastructure Security
+- **Encryption**: All S3 buckets use AES256 server-side encryption
+- **Access Control**: S3 buckets are private with explicit deny policies
+- **IMDSv2**: Required on all EC2 instances to prevent SSRF attacks
+- **EBS Encryption**: All volumes encrypted at rest
+- **Network Security**: Security groups with principle of least privilege
 
 ### Credential Security
 - **No Stored Credentials**: OIDC federation eliminates long-lived access keys
 - **Temporary Credentials**: STS provides short-lived credentials (1 hour)
-- **Least Privilege**: IAM role restricted to specific GitLab project path
-- **Audit Trail**: CloudTrail logs all API calls made by the role
+- **Least Privilege**: IAM roles restricted to specific GitLab project path
+- **Audit Trail**: CloudTrail logs all API calls made by roles
 
 ### Operational Security Best Practices
 1. **Never commit credentials** to Git (use `.gitignore`)
 2. **Review Terraform plans** before applying
-3. **Use workspaces** for environment isolation
-4. **Enable MFA** for AWS console access
-5. **Rotate credentials** regularly (even though OIDC minimizes this need)
-6. **Monitor costs** to detect unexpected resource creation
+3. **Enable MFA** for AWS console access
+4. **Monitor costs** to detect unexpected resource creation
+5. **Stop EC2 instances** when not in use (biggest cost savings)
+6. **Restrict CIDR blocks** to your actual IP addresses
 
 ## Project Structure
 
 ```
 aws-sec/
 ├── terraform/
-│   ├── state-backend/          # Remote state infrastructure
-│   │   ├── main.tf             # S3 bucket and DynamoDB table
-│   │   ├── variables.tf        # Input variables
-│   │   ├── outputs.tf          # Output values
-│   │   └── providers.tf        # AWS provider configuration
-│   │
 │   └── infrastructure/         # Main infrastructure code
-│       ├── security-lab.tf     # EC2 instances (target + attacker)
-│       ├── iam-policies.tf     # SecurityAnalyst, OrganizationAdmin roles
-│       ├── s3-buckets.tf       # AWS Config and Macie bucket management
-│       ├── oidc.tf             # GitLab OIDC provider and devops role
-│       ├── variables.tf        # Input variables
-│       └── providers.tf        # AWS provider and S3 backend
+│       ├── config-aggregator.tf    # AWS Config aggregator
+│       ├── config-recorder.tf      # AWS Config recorder
+│       ├── security-lab.tf         # EC2 instances (target + attacker)
+│       ├── iam-policies.tf         # SecurityAnalyst, OrganizationAdmin roles
+│       ├── s3-buckets.tf           # AWS Config and Macie bucket management
+│       ├── oidc.tf                 # GitLab OIDC provider and devops role
+│       ├── variables.tf            # Input variables
+│       └── providers.tf            # AWS provider configuration
+│
+├── docs/                       # Additional documentation
+│   └── config-aggregator-setup.md  # Config aggregator deployment guide
 │
 ├── scripts/                    # Automation scripts
-├── docs/                       # Additional documentation
 ├── .gitlab-ci.yml              # GitLab CI/CD pipeline
 ├── .gitignore                  # Excludes sensitive files
 └── README.md                   # This file
 ```
 
 ## Troubleshooting
-
-### Issue: "Error acquiring state lock"
-
-**Cause**: Previous Terraform run was interrupted, leaving a stale lock
-
-**Solution**:
-```bash
-# Force unlock (use with caution)
-terraform force-unlock <LOCK_ID>
-
-# Or check DynamoDB table for active locks
-aws dynamodb scan --table-name terraform-state-locks
-```
 
 ### Issue: GitLab CI/CD fails with "AccessDenied"
 
@@ -377,17 +341,37 @@ aws dynamodb scan --table-name terraform-state-locks
 - Check IAM role trust policy matches your GitLab project path
 - Ensure role has necessary permissions
 
-### Issue: "bucket already exists"
-
-**Cause**: S3 bucket names must be globally unique
+### Issue: Config recorder not recording
 
 **Solution**:
-- Let Terraform auto-generate the bucket name (leave `state_bucket_name` empty)
-- Or choose a more unique bucket name with your AWS account ID
+```bash
+# Check recorder status
+aws configservice describe-configuration-recorder-status
+
+# Check delivery channel
+aws configservice describe-delivery-channels
+
+# Verify S3 bucket permissions
+aws s3api get-bucket-policy --bucket config-bucket-<account-id>
+```
+
+### Issue: EC2 instances not accessible
+
+**Possible Causes**:
+1. Security group doesn't allow your IP
+2. User data script still running
+3. SSH key mismatch
+
+**Solution**:
+- Update `admin_cidr_blocks` in terraform.tfvars with your actual IP
+- Wait 5-10 minutes for user data to complete
+- Verify SSH key matches the one configured in terraform.tfvars
 
 ## Future Enhancements
 
 ### Completed
+- [x] AWS Config aggregator (organization-wide)
+- [x] AWS Config recorder (continuous monitoring)
 - [x] Security testing lab (Ubuntu target + attacker)
 - [x] IAM roles for security analysts
 - [x] S3 bucket management (Config, Macie)
@@ -395,6 +379,7 @@ aws dynamodb scan --table-name terraform-state-locks
 - [x] IMDSv2 enforcement on EC2
 
 ### Planned Infrastructure
+- [ ] Deploy Config recorders in all organization accounts
 - [ ] VPC with public/private subnets (dedicated security lab VPC)
 - [ ] AWS GuardDuty for threat detection
 - [ ] Security Hub for centralized findings
@@ -411,32 +396,31 @@ aws dynamodb scan --table-name terraform-state-locks
 
 ### Security Enhancements
 - [ ] Customer-managed KMS keys for S3 encryption
-- [ ] MFA delete for S3 bucket
+- [ ] MFA delete for S3 buckets
 - [ ] S3 bucket logging
 - [ ] VPC endpoints for S3 access
 - [ ] Secrets management with AWS Secrets Manager
-- [ ] Restrict security lab to specific CIDR blocks
 
 ## Cost Optimization
 
 **Current Costs** (estimated):
 - **EC2 (t3.medium x2)**: ~$60/month (if running 24/7) - **stop when not in use!**
 - **EBS Storage (90GB)**: ~$7/month
+- **AWS Config**: ~$2/month per recorder + $0.003 per config item
 - **S3 Storage**: ~$0.023/GB/month (Standard tier)
-- **S3 Requests**: Minimal (PUT/GET for state operations)
-- **DynamoDB**: ~$0.25/million requests (PAY_PER_REQUEST mode)
+- **S3 Requests**: Minimal (Config writes)
 - **Data Transfer**: Free within same region
 
 **Cost-Saving Tips**:
 - **Stop EC2 instances** when not actively testing (biggest savings!)
-- State versions moved to STANDARD_IA after 30 days (~50% cheaper)
-- Old versions deleted after 90 days
-- DynamoDB on-demand pricing (no idle costs)
+- Config data moved to STANDARD_IA after 90 days (~50% cheaper)
+- Old Config data moved to Glacier after 365 days (~80% cheaper)
 - No KMS charges (using AWS-managed keys)
+- Use SSM Session Manager instead of SSH to avoid NAT gateway costs
 
 **Estimated Monthly Cost**:
-- With EC2 running: ~$70/month
-- With EC2 stopped: < $10/month
+- With EC2 running: ~$75/month
+- With EC2 stopped: ~$15/month (S3 + Config + EBS storage only)
 
 ## License
 
@@ -446,16 +430,17 @@ MIT
 
 Johnny Endrihs
 - GitHub: [hmbldv](https://github.com/hmbldv)
-- GitLab: Private GitLab account
+- GitLab: Private GitLab for CI/CD deployment
 
 ---
 
 **Built as part of DevSecOps portfolio** demonstrating:
 - Infrastructure as Code (Terraform)
 - AWS Security Best Practices
+- AWS Config for Compliance Monitoring
 - CI/CD Automation (GitLab)
-- Secure State Management
 - OIDC Federation
 - Cost Optimization
+- Security Testing Lab Environments
 
 *Preparing for AWS Certified Security - Specialty*
