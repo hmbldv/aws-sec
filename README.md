@@ -118,14 +118,21 @@ This project establishes a production-grade foundation for AWS security infrastr
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://gitlab.com/username/aws-sec.git
+git clone https://github.com/yourusername/aws-sec.git
 cd aws-sec
 ```
 
 ### Step 2: Configure Variables
 
-Edit `terraform/state-backend/variables.tf` or create `terraform.tfvars`:
+Copy the example tfvars file and fill in your values:
 
+```bash
+cd terraform/state-backend
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your AWS account ID
+```
+
+Example `terraform.tfvars`:
 ```hcl
 aws_account_id      = "123456789012"  # Your AWS account ID
 aws_region          = "us-west-1"
@@ -159,18 +166,24 @@ state_bucket_arn    = "arn:aws:s3:::terraform-state-..."
 
 ### Step 4: Configure Backend for Future Infrastructure
 
-Create `terraform/infrastructure/backend.tf`:
+Create `terraform/infrastructure/backend.hcl` with your bucket name:
 
+```bash
+cd terraform/infrastructure
+cp backend.hcl.example backend.hcl
+# Edit backend.hcl with your bucket name from Step 3
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+```
+
+Example `backend.hcl`:
 ```hcl
-terraform {
-  backend "s3" {
-    bucket         = "terraform-state-123456789012-us-west-1"  # From Step 3
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-west-1"
-    dynamodb_table = "terraform-state-locks"                   # From Step 3
-    encrypt        = true
-  }
-}
+bucket = "terraform-state-123456789012-us-west-1"  # From Step 3
+```
+
+Then initialize with:
+```bash
+terraform init -backend-config=backend.hcl
 ```
 
 ## Configuration
@@ -210,7 +223,7 @@ The `devops-operator` role requires this trust policy:
           "gitlab.com:aud": "https://gitlab.com"
         },
         "StringLike": {
-          "gitlab.com:sub": "project_path:username/aws-sec:*"
+          "gitlab.com:sub": "project_path:<your-gitlab-username>/<project>:*"
         }
       }
     }
@@ -433,7 +446,7 @@ MIT
 
 Johnny Endrihs
 - GitHub: [hmbldv](https://github.com/hmbldv)
-- GitLab: [username](https://gitlab.com/username)
+- GitLab: Private GitLab account
 
 ---
 

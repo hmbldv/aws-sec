@@ -1,0 +1,15 @@
+# Example Terraform variables file for state backend
+# Copy to terraform.tfvars and fill in your values
+# terraform.tfvars is gitignored and will not be committed
+
+# Required: Your AWS account ID
+aws_account_id = "123456789012"
+
+# Optional: AWS region (defaults to us-west-1)
+# aws_region = "us-west-1"
+
+# Optional: Custom bucket name (auto-generated if empty)
+# state_bucket_name = "my-terraform-state"
+
+# Optional: Custom DynamoDB table name
+# dynamodb_table_name = "terraform-state-lock"

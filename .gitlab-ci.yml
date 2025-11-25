@@ -21,7 +21,7 @@ test-aws-auth:
   # Set up AWS authentication using OIDC
   before_script:
     # Export the role ARN (replace with your actual ARN)
-    - export AWS_ROLE_ARN="arn:aws:iam::123456789012:role/devops-operator"
+    - export AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/devops-operator"  # Set AWS_ACCOUNT_ID in GitLab CI/CD variables
     - export AWS_DEFAULT_REGION="us-west-1"
     
     # Use the GitLab OIDC token to assume the AWS role

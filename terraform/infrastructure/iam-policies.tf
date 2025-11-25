@@ -4,7 +4,7 @@
 
 # -----------------------------------------------------------------------------
 # MyIAM-ReadOnlyPerms Policy
-# Import: terraform import aws_iam_policy.iam_readonly arn:aws:iam::123456789012:policy/MyIAM-ReadOnlyPerms
+# Import: terraform import aws_iam_policy.iam_readonly arn:aws:iam::<account-id>:policy/MyIAM-ReadOnlyPerms
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_policy" "iam_readonly" {

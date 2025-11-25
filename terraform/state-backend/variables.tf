@@ -9,7 +9,7 @@ variable "aws_region" {
 variable "aws_account_id" {
   description = "AWS Account ID"
   type        = string
-  default     = "123456789012"
+  default     = "" # Set via terraform.tfvars
 }
 
 # S3 Bucket name for Terraform state

@@ -42,7 +42,7 @@ resource "aws_iam_role" "devops_operator" {
           }
           StringLike = {
             # Restrict to specific GitLab project and branches
-            "gitlab.com:sub" = "project_path:username/aws-sec:ref_type:branch:ref:*"
+            "gitlab.com:sub" = "project_path:${var.gitlab_project_path}:ref_type:branch:ref:*"
           }
         }
       }

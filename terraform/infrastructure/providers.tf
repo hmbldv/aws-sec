@@ -9,9 +9,10 @@ terraform {
   }
 
   # Backend configuration for remote state
-  # Run terraform init with -backend-config flags or use backend.hcl
+  # Configure via backend.hcl or -backend-config flags:
+  #   terraform init -backend-config="bucket=terraform-state-<account-id>-<region>"
   backend "s3" {
-    bucket         = "terraform-state-123456789012-us-west-1"
+    # bucket         = "terraform-state-<account-id>-<region>"  # Configure via backend.hcl
     key            = "infrastructure/terraform.tfstate"
     region         = "us-west-1"
     dynamodb_table = "terraform-state-lock"
@@ -27,7 +28,7 @@ provider "aws" {
       Project     = "aws-sec"
       ManagedBy   = "Terraform"
       Environment = var.environment
-      Repository  = "https://gitlab.com/username/aws-sec"
+      Repository  = "https://github.com/hmbldv/aws-sec"
     }
   }
 }

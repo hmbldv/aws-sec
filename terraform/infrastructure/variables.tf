@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "aws_account_id" {
   description = "AWS account ID"
   type        = string
-  default     = "123456789012"
+  default     = "" # Set via terraform.tfvars
 }
 
 variable "environment" {
@@ -19,7 +19,7 @@ variable "environment" {
 variable "gitlab_project_path" {
   description = "GitLab project path for OIDC authentication"
   type        = string
-  default     = "username/aws-sec"
+  default     = "" # Set via terraform.tfvars (e.g., "username/project")
 }
 
 # =============================================================================
@@ -29,7 +29,7 @@ variable "gitlab_project_path" {
 variable "ssh_public_key" {
   description = "SSH public key for EC2 instance access"
   type        = string
-  default     = "ssh-ed25519 AAAA...your-key-here user@example.com"
+  default     = "" # Set via terraform.tfvars (your SSH public key)
 }
 
 variable "admin_cidr_blocks" {
@@ -55,22 +55,5 @@ variable "organization_accounts" {
     account_id = string
     role_name  = string
   }))
-  default = {
-    squinks = {
-      account_id = "123456789012"
-      role_name  = "OrganizationAccountAccessRole"
-    }
-    container_services = {
-      account_id = "234567890123"
-      role_name  = "OrganizationAccountAccessRole"
-    }
-    log_archive = {
-      account_id = "345678901234"
-      role_name  = "OrganizationAccountAccessRole"
-    }
-    sec_tools = {
-      account_id = "456789012345"
-      role_name  = "OrganizationAccountAccessRole"
-    }
-  }
+  default = {} # Set via terraform.tfvars for multi-account access
 }

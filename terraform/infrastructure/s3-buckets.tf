@@ -6,7 +6,7 @@
 # AWS Config Bucket
 # -----------------------------------------------------------------------------
 
-# Import existing bucket - run: terraform import aws_s3_bucket.config_bucket config-bucket-123456789012
+# Import existing bucket - run: terraform import aws_s3_bucket.config_bucket config-bucket-<account-id>
 resource "aws_s3_bucket" "config_bucket" {
   bucket = "config-bucket-${var.aws_account_id}"
 

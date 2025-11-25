@@ -1,0 +1,7 @@
+# Example backend configuration
+# Copy to backend.hcl and fill in your values
+# Use with: terraform init -backend-config=backend.hcl
+#
+# backend.hcl is gitignored and will not be committed
+
+bucket = "terraform-state-123456789012-us-west-1"
