@@ -15,6 +15,10 @@ This project establishes a production-grade foundation for AWS security infrastr
 - **Local State Management**: Simplified Terraform state management for rapid iteration
 - **Security First**: IMDSv2 required, encrypted EBS, public access blocked on S3 buckets
 
+## Why this architecture
+
+Most AWS security IaC is reactive — controls added after the fact. This foundation starts from the security posture: Config aggregation for drift detection, credential-less CI/CD via OIDC (no long-lived keys in pipelines), and an integrated security lab for adversarial testing against the same infrastructure you're defending.
+
 ## Tech Stack
 
 - **Terraform** - Infrastructure as Code for AWS resource provisioning
