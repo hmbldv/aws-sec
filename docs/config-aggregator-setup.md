@@ -8,7 +8,7 @@ This guide explains how to set up an organization-wide AWS Config aggregator in 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ sec-tools Account (183590991623)                            │
+│ sec-tools Account (<SEC_TOOLS_ACCOUNT_ID>)                            │
 │                                                              │
 │  ┌────────────────────────────────────────────────────┐    │
 │  │ AWS Config Aggregator                              │    │
@@ -41,7 +41,7 @@ This guide explains how to set up an organization-wide AWS Config aggregator in 
 
 Deploy the Config recorder in each account that you want to aggregate data from:
 
-#### For squinks account (266735821834):
+#### For squinks account (<ACCOUNT_ID>):
 ```bash
 cd terraform/infrastructure
 
@@ -49,7 +49,7 @@ cd terraform/infrastructure
 export AWS_PROFILE=squinks  # or use appropriate profile
 
 # Initialize and apply
-terraform init -backend-config="bucket=terraform-state-266735821834-us-west-1"
+terraform init -backend-config="bucket=terraform-state-<ACCOUNT_ID>-us-west-1"
 terraform apply -target=aws_config_configuration_recorder.main \
                 -target=aws_config_delivery_channel.main \
                 -target=aws_config_configuration_recorder_status.main
@@ -57,9 +57,9 @@ terraform apply -target=aws_config_configuration_recorder.main \
 
 #### For other accounts:
 Repeat the process for:
-- Log Archive (768157413516)
-- Container Services (918033868466)
-- sec-tools (183590991623) - the aggregator account itself
+- Log Archive (<LOG_ARCHIVE_ACCOUNT_ID>)
+- Container Services (<CONTAINER_SERVICES_ACCOUNT_ID>)
+- sec-tools (<SEC_TOOLS_ACCOUNT_ID>) - the aggregator account itself
 
 ### Step 2: Deploy Config Aggregator in sec-tools Account
 
