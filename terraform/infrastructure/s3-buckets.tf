@@ -157,7 +157,7 @@ resource "aws_s3_bucket_policy" "config_bucket" {
 
 # Import existing bucket - run: terraform import aws_s3_bucket.macie_bucket squnks-macie-data-discovery
 resource "aws_s3_bucket" "macie_bucket" {
-  bucket = "squnks-macie-data-discovery"
+  bucket = "<YOUR_MACIE_BUCKET_NAME>"
 
   tags = {
     Name        = "Macie Data Discovery Bucket"
